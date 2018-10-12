@@ -13,10 +13,10 @@ future: true
 
 # SNS settings
 RSS: false
-weibo_username:     huxpro
-zhihu_username:     huxpro
+weibo_username:     zhilianzhaopin
+zhihu_username:     shuang-shou-lian-xu-pu-tong-quan-39
 github_username:    zhilianzhaopin
-twitter_username:   huxpro
+twitter_username:   zhilianzhaopin
 #facebook_username:  huxpro
 #linkedin_username:  firstname-lastname-idxxxx
 
@@ -103,9 +103,9 @@ page-mathjax: false
 # Friends
 friends: [
     {
-    #     title: "Su",
-    #     href: "http://su.gallery/"
-    # },{
+        title: "钊少",
+        href: "https://www.jianshu.com/u/e83faf720ae7"
+    },{
         title: "乱序",
         href: "http://mida.re/"
     },{
