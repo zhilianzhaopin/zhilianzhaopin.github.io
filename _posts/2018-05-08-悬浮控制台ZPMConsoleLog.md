@@ -1,3 +1,18 @@
+---
+layout: post
+title: "悬浮控制台ZPMConsoleLog"
+subtitle: "iOS ConsoleLog"
+author: "Liu Zhao"
+header-img: "img/post-bg-halting.jpg"
+header-mask: 0.4
+tags:
+  - iOS
+  - 控制台
+  - Console
+  - Log
+  - 日志
+---
+
 # ZPMConsoleLog
 
 ### 简介
