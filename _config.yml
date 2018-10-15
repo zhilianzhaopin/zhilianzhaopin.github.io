@@ -5,7 +5,7 @@ header-img: img/zpmBg.png
 email: zhao.liu@zhaopin.com.cn
 description: "关于程序与设计、黑客与画家 | 智联，Web & Mobile Lover，Software Engineer，UX Designer | 这里是 @智联招聘 的博客，与你一起发现更大的世界。"
 keyword: "智联招聘, zhilianzhaopin, zhaopin, 智联的博客, 智联Blog, 博客, io网站, 互联网, Web, JavaScript, 前端, 设计, iOS, Android"
-url: "http://zpmobile.tech"              # your host, for absolute URL
+url: "http://www.zpmobile.tech"              # your host, for absolute URL
 baseurl: ""                             # for example, '/blog' if your blog hosted on 'host/blog'
 
 # Publish posts or collection documents with a future date.
