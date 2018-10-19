@@ -1,4 +1,4 @@
-# Hux Blog
+# Zhaopin Blog
 
 
 ## Porting 
@@ -10,13 +10,6 @@
 ## Translation
 
  - ![cn](https://raw.githubusercontent.com/gosquared/flags/master/flags/flags/shiny/24/China.png) **Chinese (Simplified)**: 感谢 [@BrucZhaoR](https://github.com/BruceZhaoR) 的 [中文翻译 &rarr;](https://github.com/zhilianzhaopin/zhilianzhaopin.github.io/blob/master/README.zh.md)
-
-
-## Support
-
-- **Feel free to fork. I'll Appreciate it if you keep the Author & Github link at footer**
-- Give it a **Star** if you like, fork or just clone to use ;)
-- If any problem or requirement, just open an issue here and I will help you.
 
 
 ## Document
