@@ -10,7 +10,7 @@ tags:
   - iOS
 ---
 
-1、关于podspec文件
+### 1、关于podspec文件
 
 s.name 就是你的项目名了,通过之后可以使用pod search命令搜索到；
 
@@ -40,7 +40,7 @@ core.frameworks 依赖的系统的framework框架 ；
 
 core.ios.library 依赖的系统的lib库文件；
 
-2、本地检查
+### 2、本地检查
 
 提交之前，最好先进行本地检查，执行pod lib lint --verbose命令，verbose是为了出错时，有详细的错误描述。
 
@@ -70,7 +70,7 @@ core.ios.library 依赖的系统的lib库文件；
 
 ![pod_lint.png](https://upload-images.jianshu.io/upload_images/2005687-ea87893a94263102.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
 
-3、通过Trunk push podspec文件
+### 3、通过Trunk push podspec文件
 
 如果你之前还没提交代码的话，先提交代码到github，
 
@@ -94,7 +94,7 @@ yourProjectName是你的文件名，请修改成你自己的podspec名称
 
 通过本地pod lib lint的文件一般而言都不会出什么问题，发生概率最大的问题可能就是由于网不给力，导致连接GitHub困难。上传成功之后，就可以使用pod search命令来搜索自己的项目了（可能得等上一段时间，有可能几个小时才能搜索到）。
 
-4、后续项目的升级
+### 4、后续项目的升级
 
 当你的项目做出了修改之后，当然希望cocoapods中的版本也进行更新。此时就需要更新podspec描述文件了，将podspec文件改成符合你当前版本的需求之后。还需要给你GitHub上的版本打上tag，而且一定要和podspec中的s.version一致。
 
@@ -124,7 +124,7 @@ pod trunk push xxx.podspec --verbose
 
 就可以了。
 
-5、执行pod trunk me时的错误
+### 5、执行pod trunk me时的错误
 
 1、[!] Authentication token is invalid or unverified. Either verify it with the email that was sent or register a new session.
 
