@@ -1,0 +1,464 @@
+### 前言
+>随着公司业务的发展，数据的重要性日益体现出来。 数据埋点的准确和全面性显得尤为重要。 
+通过精准和详细的数据，后面的分析才有意义。随着业务的不断变化，动态化埋点也越来越重要。
+
+### 三大埋点方式
+
+为了解决这些问题， 很多公司都提出自己的解决方案， 各中解决方案中，大体分为以下三种：
+
+#### 1、代码埋点
+由开发人员在触发事件的具体方法里，植入多行代码把需要上传的参数上报至服务端。
+
+#### 2、可视化埋点
+根据标识来识别每一个事件， 针对指定的事件进行取参埋点。而事件的标识与参数信息都写在配置表中，通过动态下发配置表来实现埋点统计。
+
+#### 3、无埋点
+无埋点，也成为“无痕埋点”，无埋点还有另一种叫法：全埋点。
+前端的任意一个事件都被绑定一个标识，所有的事件都别记录下来。通过定期上传记录文件，配合文件解析，解析出来我们想要的数据， 并生成可视化报告供专业人员分析 ，因此实现“无埋点”统计。
+
+无埋点方案目前已经有神策埋点实现，另外考虑到“无埋点”的方案成本较高，并且后期解析也比较复杂，加上view_path的不确定性，所以本文重点介绍“可视化埋点”的简单实现方式。
+
+### 可视化埋点
+>可视化埋点并非完全抛弃了代码埋点，而是在代码埋点的上层封装的一套逻辑来代替手工埋点。理论上可视化的埋点也应该封装在埋点的SDK层，但是由于历史原因，智联的埋点SDK只封装了缓存数据和上报数据这一层，所以我们可以在客户端层面，增加一层可视化埋点SDK。
+
+大体架构如下：
+![WX20181212-111410@2x.png](https://upload-images.jianshu.io/upload_images/6879404-fc47149a4f2d8618.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/480)
+
+从业务架构上来看，可视化埋点主要对页面Out、In（PV）、按钮等事件点击（Action）、列表的滑动、点击等（List）、手势动作（Gesture）进行埋点，就能覆盖90%以上统计事件。
+
+### 要解决的问题
+>代码埋点可以解决所有的自定义埋点，深入程度也是最高的，但是他有天然劣势，就是每出现一个新的页面，新的需求，都需要开发人员植入多行代码把需要上传的参数上报至服务端，开发成本高，效率低下，经常出现业务开发需求一星期，埋点埋两星期的情况。
+
+埋点需要解决的问题有：
+
+1、重复埋点问题
+如何才能动态埋点，不需要每次需求都要特意去埋一次点，特别是那些页面的进出、停留时长等的埋点，重复的埋点徒增开发时间。
+
+2、pageid（pagecode）不同而且无规律问题
+虽然可视化埋点可以利用Hook原理，来解决这个问题，但由于统计的要求，每个页面都自带不同的pageid或者pagecode，这样一来无法利用父类的方式去一次性埋点，因为即使通过继承的方式，也无法做到每个子类都有不同的pageid。即使利用Hook原理，去Hook每一个页面的Appear和DisAppear方法，也无法对这些不同的页面注入不同的Pagecode，这样唯一标识又构成了瓶颈。
+
+3、动态埋点问题
+即使进行了代码埋点，每个版本都进行埋点，但是却无法对已经上线的版本进行埋点，假如上线后有些埋点忘记埋了，就只能等到下个版本才能进行埋点的添加，是否有办法做到动态的下发配置来对线上版本增加埋点，而不需要发版呢？
+
+4、页面OI先后顺序问题
+代码埋点的方式，如果想知道C页面是从A页面进来的，还是从B页面还是先A再B最后在进入C的，就得对每个页面进行一个传值，而且这样做还有一个弊端就是可能不知道用户这个C页面可能是这样的：A->B->D->B->A->B->C，普通的代码埋点只能知道是B到C，却不了解进入C之前其实有很多前进后退页面的操作，这样对数据分析可能就会有偏差，那是否有办法做到自动记录页面进出的方案呢？
+
+### 解决方案
+
+>唯一标识的组成方式主要是又 target + action 来确定， 即任何一个事件都存在一个target与action。 在此引入AOP编程，AOP（Aspect-Oriented-Programming）即面向切面编程的思想，基于 Runtime 的 Method Swizzling能力，来 hook 相应的方法，从而在hook方法中进行统一的埋点处理。例如所有的按钮被点击时，都会触发UIApplication的sendAction方法，我们hook这个方法，即可拦截所有按钮的点击事件。
+
+![WX20181212-143303@2x.png](https://upload-images.jianshu.io/upload_images/6879404-22dfe4ac74d89e3b.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/360)
+
+但是刚才问题2提到，只是单纯的Hook，无法解决PageCode、ActionCode如果埋入的问题，即：“事件唯一标识符“如何埋入的问题。所以在这里，我们要利用一份配置表来管理这个“事件唯一标识符“。
+这里主要分为两个部分 ：
+
+* 事件的锁定
+事件的锁定主要是靠 “事件唯一标识符”来锁定，而事件的唯一标识是由我们写入配置表中的。这里分为两种，本地配置表和线上下载的配置表。
+
+* 埋点数据的上报。
+埋点数据的数据又分为两种类型： 固定数据与可变的业务数据， 而固定数据我们可以直接写到配置表中，通过唯一标识来获取。而对于业务数据，我是这么理解的：数据是有持有者的，例如我们Controller的一个属性值，又或者数据再Model的某一个层级。这么的话我们就可以通过KVC的的方式来递归获取该属性的值来取到业务数据。
+
+### 整体解决方案
+由于业务中的事件场景是多样的，以iOS为例，在此我以UIControl（Button、Switch、TextField等都属于Control）, UITablview(CollectionView与TableView基本相同，Android里对应的则是ListView)，UITapGesture，UIViewController的PV统计为例，介绍一下具体思路。
+
+1. UIViewController PV统计
+页面的统计较为简单，利用Method Swizzing hook 系统的viewDidLoad， 直接通过页面名称即可锁定页面的展示代码如下：
+```
++ (void)load
+{
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        SEL originalAppearSelector = @selector(viewWillAppear:);
+        SEL swizzingAppearSelector = @selector(analysis_viewWillAppear:);
+        [ZPMMethodSwizzingTool swizzingForClass:[self class] originalSel:originalAppearSelector swizzingSel:swizzingAppearSelector];
+        
+        SEL originalDisappearSelector = @selector(viewWillDisappear:);
+        SEL swizzingDisappearSelector = @selector(analysis_viewWillDisappear:);
+        [ZPMMethodSwizzingTool swizzingForClass:[self class] originalSel:originalDisappearSelector swizzingSel:swizzingDisappearSelector];
+        
+        SEL originalDidLoadSelector = @selector(viewDidLoad);
+        SEL swizzingDidLoadSelector = @selector(analysis_viewDidLoad);
+        [ZPMMethodSwizzingTool swizzingForClass:[self class] originalSel:originalDidLoadSelector swizzingSel:swizzingDidLoadSelector];
+    });
+}
+```
+Hook系统ViewDidLoad的方法大致如下：
+```
+- (void)analysis_viewDidLoad
+{
+    [self analysis_viewDidLoad];
+    
+    self.view.backgroundColor = [UIColor whiteColor];
+    
+    //从配置表中取参数的过程 1 固定参数  2 业务参数（此处参数被target持有）
+    NSString *identifier = [NSString stringWithFormat:@"%@", [self class]];
+//    NSLog(@"identifier:%@",identifier);
+
+    NSDictionary *dic = [[[ZPMDataContainer sharedInstance].data objectForKey:@"PAGEPV"] objectForKey:identifier];
+    if (dic) {
+        NSString *pageid = dic[@"userDefined"][@"pageid"];
+        NSString *pagename = dic[@"userDefined"][@"pagename"];
+        NSDictionary *pagePara = dic[@"pagePara"];
+        
+        __block NSMutableDictionary *uploadDic = [NSMutableDictionary dictionaryWithCapacity:0];
+        [pagePara enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL * _Nonnull stop) {
+            
+            id value = [ZPMCapturePropertyTool captureVarforInstance:self withPara:obj];
+            if (value && key) {
+                [uploadDic setObject:value forKey:key];
+            }
+        }];
+        
+        NSLog(@"\n 事件唯一标识为：%@ \n  pageid === %@,\n  pagename === %@,\n  pagepara === %@ \n", [self class], pageid, pagename, uploadDic);
+    }
+}
+```
+2. UIControl 点击统计
+主要通过hook sendAction:to:forEvent: 来实现, 其唯一标识符我们用 targetname/selector/tag来标记，具体代码如下：
+```
++ (void)load
+{
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        SEL originalSelector = @selector(sendAction:to:forEvent:);
+        SEL swizzingSelector = @selector(analysis_sendAction:to:forEvent:);
+        [ZPMMethodSwizzingTool swizzingForClass:[self class] originalSel:originalSelector swizzingSel:swizzingSelector];
+    });
+}
+
+- (void)analysis_sendAction:(SEL)action to:(id)target forEvent:(UIEvent *)event
+{
+    [self analysis_sendAction:action to:target forEvent:event];
+    
+    NSString *identifier = [NSString stringWithFormat:@"%@/%@", [target class], NSStringFromSelector(action)];
+    NSDictionary *dic = [[[ZPMDataContainer sharedInstance].data objectForKey:@"ACTION"] objectForKey:identifier];
+    if (dic) {
+        
+        NSString *eventid = dic[@"userDefined"][@"eventid"];
+        NSString *targetname = dic[@"userDefined"][@"target"];
+        NSString *pageid = dic[@"userDefined"][@"pageid"];
+        NSString *pagename = dic[@"userDefined"][@"pagename"];
+        NSDictionary *pagePara = dic[@"pagePara"];
+        __block NSMutableDictionary *uploadDic = [NSMutableDictionary dictionaryWithCapacity:0];
+        [pagePara enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL *_Nonnull stop) {
+            
+            id value = [ZPMCapturePropertyTool captureVarforInstance:target withPara:obj];
+            if (value && key) {
+                [uploadDic setObject:value forKey:key];
+            }
+        }];
+        
+        NSLog(@"\n event id === %@,\n  target === %@, \n  pageid === %@,\n  pagename === %@,\n pagepara === %@ \n", eventid, targetname, pageid, pagename, uploadDic);
+    }
+}
+```
+3. TableView (CollectionView) 的点击统计
+tablview的唯一标识， 我们使用 delegate.class/tableview.class/tableview.tag的组合来唯一锁定。主要是通过hook setDelegate 方法， 在设置代理的时候再去交互 didSelect（点击）、scrollViewDidScroll（滑动列表）方法来实现。具体代码先不上了。
+
+4. gesture方式添加的的点击统计
+gesture的事件，是通过 hook initWithTarget:action:方法来实现的， 事件的唯一标识依然是target.class/actionname来锁定的。
+
+从上面的代码可以看出，这个pageid和eventid都不是写死的，而且从一个字典里面获取值，如dic[@"userDefined"][@"pageid"]，那么这个value从哪获取呢，这里就要用到配置表了。
+
+### 配置表结构
+>配置表是一个json数据。 针对不同的场景 （UIControl , 页面PV， Tabeview, Gesture）都做了区分， 用不同的key区别。 对于 "固定参数" ， 我们之间写到配置表中，而对于业务参数， 我们之间写清楚参数在业务内的名字， 以及上传时的 keyName， 参数的持有者。 通过Runtime + KVC来取值。  配置表可以是这个样子：（仅供参考）
+```
+{
+    "ACTION": {
+        "ThirdViewController/jumpSecond:": {
+            "userDefined": {
+                "eventid": "201803074|93",
+                "target": "",
+                "pageid": "234",
+                "pagename": "button点击，跳转至下一个页面"
+            },
+            "pagePara": {
+                "testKey9": {
+                    "propertyName": "testPara",
+                    "propertyPath":"",
+                    "containIn": "0"
+                }
+            }
+        },
+        
+        "SecondViewController/back": {
+            "userDefined": {
+                "eventid": "201803074|965",
+                "target": "second",
+                "pageid": "235",
+                "pagename": "button点击，返回"
+            },
+            "pagePara": {
+                "testKey9": {
+                    "propertyName": "testPara",
+                    "propertyPath":"",
+                    "containIn": "0"
+                }
+            }
+        }
+    },
+    
+    "PAGEPV": {
+        "HomeViewController": {
+            "userDefined": {
+                "pageid": "3156",
+                "pagename": "首页展示了"
+            },
+            "pagePara": {
+                "testKey10": {
+                    "propertyName": "testPara",
+                    "propertyPath":"",
+                    "containIn": "0"
+                }
+            }
+        },
+        "SecondViewController": {
+            "userDefined": {
+                "pageid": "4687",
+                "pagename": "SecondView页面展示"
+            },
+            "pagePara": {
+                "testKey0": {
+                    "propertyName": "age",
+                    "propertyPath":"",
+                    "containIn": "0"
+                },
+                "testKey1": {
+                    "propertyName": "content",
+                    "propertyPath":"",
+                    "containIn": "0"
+                },
+                "testKey2": {
+                    "propertyName": "propertyDic",
+                    "propertyPath":"",
+                    "containIn": "0"
+                },
+                "testKey3": {
+                    "propertyName": "items",
+                    "propertyPath":"",
+                    "containIn": "0"
+                }
+            }
+        }
+    },
+    "TABLEVIEW": {
+        "ViewController/UITableView/0":{
+            "userDefined": {
+                "eventid": "201803074|93",
+                "target": "",
+                "pageid": "238",
+                "pagename": "tableview 被点击"
+            },
+            "pagePara": {
+                "user_grade": {
+                    "propertyName": "grade",
+                    "propertyPath":"",
+                    "containIn": "1"
+                }
+            }
+        }
+    },
+    
+    "GESTURE": {
+        "ViewController/gesture1clicked:":{
+            "userDefined": {
+                "eventid": "201803074|93",
+                "target": "",
+                "pageid": "手势1对应的id",
+                "pagename": "手势1对应的page name"
+            },
+            "pagePara": {
+                "testKey1": {
+                    "propertyName": "testPara",
+                    "propertyPath":"",
+                    "containIn": "0"
+                }
+                
+            }
+        },
+        "ViewController/gesture2clicked:":{
+            "userDefined": {
+                "eventid": "201803074|93",
+                "target": "",
+                "pageid": "手势2对应的id",
+                "pagename": "手势2对应的page name"
+            },
+            "pagePara": {
+                "testKey2": {
+                    "propertyName": "testPara",
+                    "propertyPath":"",
+                    "containIn": "0"
+                }
+                
+            }
+        },
+        
+        "SecondViewController/gesture3clicked:":{
+            "userDefined": {
+                "eventid": "201803074|98",
+                "target": "",
+                "pageid": "gesture3clicked",
+                "pagename": "手势3对应的page name"
+            },
+            "pagePara": {
+                "user_age": {
+                  
+                }
+                
+            }
+        }
+    }
+}
+```
+json最外层有四个Key, 分别为 ACTION  PAGEPV  TABLEVIEW  GESTURE, 分别对应 UIControl的点击,页面PV，tableview cell点击， Gesture 单击事件的参数。 每个key对应的value为json格式，Json中的keys， 即为唯一标识符。  
+
+标识符下的json有两个key ：
+userDefine指的固定数据，即直接取值进行上报。
+而pagePara为业务参数。pagePara对应的value也是一个json， json的keys，即上报的keys，value内的json包含三个参数：
+propertyName为属性名字， 
+containIn 参数只有0 ，1 两种情况，用来区分类似Tableview的Cell里面按钮的持有对象，看是要统计cell的点击事件，还是cell里面的控件的点击事件。
+propertyPath是属性路径，有些不同的层级有相同的属性名字，比如self.age 和 self.person.age，如果把propertyPath的值设为 person/age，取值的时候就会按照指定路径进行取值。
+
+从配置表来看，所有的hook事件都不再是一个写死的id，而是从配置表里面拿的数据，解决了问题2提到的，由于不同的pageid导致无法Hook的瓶颈。这样的配置表有2个好处，一是可以自由配置想统计的页面，二是可以动态下发，只要配置正确，即使不发版也可以拿到线上版本的数据。
+
+效果如下：
+```
+2018-12-12 15:04:18.373103+0800 ZPMStatisticsDemo[1435:199292] 
+ 事件唯一标识为：SecondViewController 
+  pageid === 4687,
+  pagename === SecondView页面展示,
+  pagepara === {
+    testKey0 = 30;
+    testKey1 = "Hello World";
+    testKey2 =     {
+        key = 1;
+    };
+    testKey3 =     (
+        a,
+        b,
+        2
+    );
+} 
+```
+
+有了这个配置表，页面的In、Out，就可以通过Hook页面的ViewAppear和ViewDisAppear来拦截埋点了，减少了大量重复埋点的时间。但是我们还有一个问题，页面进出先后顺序问题。
+
+### 页面进出顺序
+>试想一个场景，我在JD页点击投递简历按钮，可视化埋点虽然记录了点击事件，我们做分析的时候，确无法得知用户点击这个投递按钮是通过什么方式进来的，是从搜索结果页进入，还是首页推荐，还是推送进入的。如果要知道这样的进出先后，就需要进行页面的传递。如果有一个方案，自动记录页面的进出堆栈顺序，那么这个问题就迎刃而解了。
+
+解决方案：
+通过Hook viewWillAppear:方法来实现，具体代码如下：
+```
+- (void)analysis_viewWillAppear:(BOOL)animated
+{
+    [self analysis_viewWillAppear:animated];
+    
+    NSString *identifier = [NSString stringWithFormat:@"%@", [self class]];
+    NSDictionary *dic = [[[ZPMDataContainer sharedInstance].data objectForKey:@"PAGEPV"] objectForKey:identifier];
+    NSString *pageInfo = [NSString stringWithFormat:@"%@, %@",[self getCurrentTimes], [self class]];
+    if (dic) {
+        NSString *pageid = dic[@"userDefined"][@"pageid"];
+        pageInfo = [pageInfo stringByAppendingFormat:@" ,%@",pageid];
+    }
+    [[ZPM_IO_Queue sharedInstance].queueArray addObject:pageInfo];
+    
+    // 把页面出现顺序保存起来
+    if ([ZPM_IO_Queue sharedInstance].queueArray.count > 10) { // 这里只存10个页面队列
+        [[ZPM_IO_Queue sharedInstance].queueArray removeObjectAtIndex:0];
+    }
+    NSLog(@"queueArray:%@",[ZPM_IO_Queue sharedInstance].queueArray);
+}
+```
+打印了一下日志：
+```
+2018-12-12 15:04:36.813738+0800 ZPMStatisticsDemo[1435:199292] queueArray:(
+    "2018-12-12 15:04:12, UINavigationController",
+    "2018-12-12 15:04:12, HomeViewController ,3156",
+    "2018-12-12 15:04:18, SecondViewController ,4687",
+    "2018-12-12 15:04:32, ThirdViewController",
+    "2018-12-12 15:04:36, SecondViewController ,4687"
+)
+```
+从日志里可以看出，进出队列包含时间、类名、和pageid，（UINavigationController代表的是这些页面都是Navigation类型的，而ThirdViewController没有pageid是因为配置表里没有配）。这样每个点击事件的来源就一目了然了。
+
+### 动态获取自定义上报事件
+>试想这样一个场景，即使解决了动态Pageid的问题，如果统计需求，要在不同页面拿不同的参数，比如简历页我要获取简历id、简历编号、个人信息，JD页我又要页面数据、各个点击事件。每个页面要拿的参数都是不一样的，那么岂不是即使解决了pageid不同的瓶颈，最好还是落得要手动代码埋点的下场，因为每个页面的上报的参数都是不一样的。那这种情况下该如何解决呢？
+
+一般来说有2种解决方案
+
+第一种是代码埋点，对于高度自定义的上报就是得用代码来埋点，因为即使是像神策这样的全埋点策略，也无法做到所有地方的精确埋点。
+
+这里主要是介绍第二种方案，取参埋点法。简单介绍一下什么是取参埋点，取参埋点其实就是利用Runtime，获取一个类所有的property属性，即成员变量，比如搜索结果页的列表数据，是存放在一个叫listData的数组里的，那么通过Hook机制，动态拿到listData，就可以拿到里面的数据进行上传操作。
+
+这样只需要通过配置表，添加自己想获取的属性数据，就能上报这样的数据（前提是这个页面有这样的成员变量，局部变量的数据只能手动埋点了）。
+
+取参埋点的部分代码：
+```
++ (BOOL)getVariableWithClass:(Class) myClass varName:(NSString *)name
+{
+    unsigned int outCount, i;
+    Ivar *ivars = class_copyIvarList(myClass, &outCount);
+    for (i = 0; i < outCount; i++) {
+        Ivar property = ivars[i];
+        NSString *keyName = [NSString stringWithCString:ivar_getName(property) encoding:NSUTF8StringEncoding];
+        keyName = [keyName stringByReplacingOccurrencesOfString:@"_" withString:@""];
+        if ([keyName isEqualToString:name]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
++ (id)captureVarforInstance:(id)instance varName:(NSString *)varName
+{
+    unsigned int count;
+    objc_property_t *properties = class_copyPropertyList([instance class], &count);
+    
+    // 检测是否存在这个属性
+    BOOL exit = [ZPMCapturePropertyTool getVariableWithClass:[instance class] varName:varName];
+    
+    id value = nil;
+    if (exit) {
+        value = [instance valueForKey:varName];
+    }
+    
+    if (!value) {
+        NSMutableArray *varNameArray = [NSMutableArray arrayWithCapacity:0];
+        for (int i = 0; i < count; i++) {
+            objc_property_t property = properties[i];
+            NSString *propertyAttributes = [NSString stringWithUTF8String:property_getAttributes(property)];
+            NSArray *splitPropertyAttributes = [propertyAttributes componentsSeparatedByString:@"\""];
+            if (splitPropertyAttributes.count < 2) {
+                continue;
+            }
+            NSString *className = [splitPropertyAttributes objectAtIndex:1];
+            Class cls = NSClassFromString(className);
+            NSBundle *bundle2 = [NSBundle bundleForClass:cls];
+            if (bundle2 == [NSBundle mainBundle]) {
+                //                NSLog(@"自定义的类----- %@", className);
+                const char *name = property_getName(property);
+                NSString *varname = [[NSString alloc] initWithCString:name encoding:NSUTF8StringEncoding];
+                [varNameArray addObject:varname];
+            } else {
+                //                NSLog(@"系统的类");
+            }
+        }
+        
+        for (NSString *name in varNameArray) {
+            id newValue = [instance valueForKey:name];
+            if (newValue) {
+                value = [newValue valueForKey:varName];
+                if (value) {
+                    return value;
+                }else{
+                    value = [[self class] captureVarforInstance:newValue varName:varName];
+                }
+            }
+        }
+    }
+    return value;
+}
+
+```
+### 总结
+>以上讨论的方案主要是解决了提出的4个问题，尽量可以减少代码的侵入性，以及以后的维护成本。同时可以动态更新埋点数据，而不需要通过发版的方式解决。但是以上方案也只是涵盖了大部分场景， 并非所有场景都适用，具体大家可以根据业务情况来决定使用范围。如果有更好的方案获取提议，欢迎来骚扰。
